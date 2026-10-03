@@ -1,6 +1,8 @@
 import os
+import time
 from google import genai
 from google.genai import types
+from google.genai import errors
 from pydantic import BaseModel, Field
 
 class LegalAlphaSignal(BaseModel):
@@ -23,19 +25,35 @@ def analyze_legal_text(document_text: str, client: genai.Client) -> LegalAlphaSi
         "A negative score (-0.1 to -1.0) means the patent is vulnerable to invalidation or generic entry is accelerated."
     )
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=document_text,
-        config=types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            response_mime_type="application/json",
-            response_schema=LegalAlphaSignal,
-            temperature=0.1,
-        ),
-    )
+    max_retries = 5
+    base_wait_time = 4  # seconds
     
-    return LegalAlphaSignal.model_validate_json(response.text)
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model="gemini-3.8-flash",
+                contents=document_text,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    response_mime_type="application/json",
+                    response_schema=LegalAlphaSignal,
+                    temperature=0.1,
+                ),
+            )
+            return LegalAlphaSignal.model_validate_json(response.text)
+            
+        except errors.APIError as e:
+            if getattr(e, 'code', None) in [503, 429]:
+                wait = base_wait_time * (2 ** attempt) 
+                print(f"[Network] API busy (Error {e.code}). Retrying in {wait} seconds... (Attempt {attempt + 1}/{max_retries})")
+                time.sleep(wait)
+            else:
+                raise e
+                
+    raise Exception("Gemini API is currently overloaded. Pipeline paused.")
 
+
+# --- MAKE SURE THIS SECTION IS AT THE VERY BOTTOM AND TOUCHES THE LEFT EDGE ---
 if __name__ == "__main__":
     sample_ruling = """
     IN THE UNITED STATES DISTRICT COURT FOR THE DISTRICT OF DELAWARE
@@ -52,9 +70,11 @@ if __name__ == "__main__":
     
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        raise ValueError("Missing GEMINI_API_KEY environment variable.")
+        raise ValueError("Missing GEMINI_API_KEY environment variable. Run 'export GEMINI_API_KEY=your_key_here' first.")
         
     client = genai.Client(api_key=api_key)
+    
+    print("Sending legal filing to Gemini API...")
     signal = analyze_legal_text(sample_ruling, client)
     
     print("\n--- Parsed Legal Signal ---")
