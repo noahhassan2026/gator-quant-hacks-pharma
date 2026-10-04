@@ -1,0 +1,104 @@
+{
+  "cutoff": 0.54,
+  "settings": {
+    "horizon": 5,
+    "max_depth": 2,
+    "learning_rate": 0.03,
+    "min_samples_leaf": 100
+  },
+  "trained_through": "2024-12-31",
+  "features": [
+    "sentiment",
+    "surprise",
+    "materiality",
+    "binary_catalyst_ahead",
+    "pre_ret_5",
+    "pre_ret_20",
+    "vol_20",
+    "log_dollar_volume",
+    "log_price",
+    "after_hours",
+    "days_since_last_filing",
+    "event_patent_litigation",
+    "event_settlement",
+    "event_fda_decision",
+    "event_clinical_trial_result",
+    "event_earnings",
+    "event_licensing_or_partnership",
+    "event_merger_or_acquisition",
+    "event_financing",
+    "event_restructuring",
+    "event_management_change",
+    "event_delisting_or_compliance",
+    "event_other",
+    "item_1_01",
+    "item_1_02",
+    "item_2_01",
+    "item_2_02",
+    "item_2_05",
+    "item_2_06",
+    "item_3_01",
+    "item_5_02",
+    "item_7_01",
+    "item_8_01"
+  ],
+  "rules": [
+    "quick",
+    "short_drift",
+    "default",
+    "wide",
+    "time_only",
+    "vol_scaled"
+  ],
+  "exit_rules": {
+    "quick": [
+      0.05,
+      0.03,
+      3
+    ],
+    "short_drift": [
+      0.08,
+      0.05,
+      10
+    ],
+    "default": [
+      0.15,
+      0.08,
+      30
+    ],
+    "wide": [
+      0.25,
+      0.12,
+      30
+    ],
+    "time_only": [
+      null,
+      0.15,
+      20
+    ],
+    "vol_scaled": [
+      "vol",
+      "vol",
+      15
+    ]
+  },
+  "borrow_tiers": [
+    [
+      100000000,
+      0.005
+    ],
+    [
+      20000000,
+      0.02
+    ],
+    [
+      5000000,
+      0.08
+    ],
+    [
+      0,
+      0.25
+    ]
+  ],
+  "hedge_borrow_rate": 0.005
+}

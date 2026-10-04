@@ -1,0 +1,16 @@
+# secrets
+.env
+*.env
+*.log
+# data, caches and trained models (large, can be re-created)
+*.csv
+*.jsonl
+*.joblib
+prices/
+prices_test/
+prices_live/
+minute_cache/
+models/
+backtest_report.png
+labels_live_checked.txt
+__pycache__/
