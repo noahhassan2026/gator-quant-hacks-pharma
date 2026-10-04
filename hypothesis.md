@@ -29,3 +29,20 @@ Triggered when milestone filings hit the docket (Markman claim construction ruli
     *   **Long Branded / Short XPH:** Positive combined score (judge leans innovator + favorable Markman ruling).
     *   **Short Branded / Long XPH:** Negative combined score (judge leans generic challenger).
 *   **Exit Conditions:** Close positions upon formal settlement disclosure or within 24 hours post-trial ruling to avoid extended post-verdict binary chop.
+
+
+
+---
+
+## Revision, 2026-10-04: hypothesis changed before the final model was built
+
+The original hypothesis above (Hatch-Waxman litigation, judge propensity, Gemini on court filings) was committed on 2026-10-03. We could not get enough historical court data in time, so we moved to a broader version of the same idea, using SEC 8-K filings instead of court dockets.
+
+**Revised hypothesis.** The market under-reacts to the text of material 8-K filings from U.S. pharma and biotech companies. An LLM reading the filing (sentiment, surprise, materiality), combined with simple market features, predicts the stock's return relative to XPH over the following 5 to 10 trading days. The strategy goes long or short the stock and hedges with XPH, so the return is sector-neutral.
+
+**What would prove it wrong.** No positive average net trade in walk-forward validation (2020-2024), or no edge over simply shorting every filing.
+
+**What stayed the same.** Pharma universe, XPH hedge, LLM text scoring, Webull execution.
+
+Results were not known when the original hypothesis was written. This revision was written after some results were seen; the quant note discloses that.
+
