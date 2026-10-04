@@ -3,7 +3,7 @@ import databento as db
 import pandas as pd
 from datetime import datetime, timedelta
 
-def fetch_historical_price_data(ticker: str, event_date_str: str, days_before: int = 5, days_after: int = 5) -> pd.DataFrame:
+def fetch_historical_price_data(ticker: str, event_date_str: str, days_before: int = 5, days_after: int = 10) -> pd.DataFrame:
     """
     Fetches daily OHLCV data from Databento around a specific legal event date.
     """
@@ -22,25 +22,18 @@ def fetch_historical_price_data(ticker: str, event_date_str: str, days_before: i
     print(f"Fetching Databento data for {ticker} from {start_date} to {end_date}...")
 
     try:
-        # Databento requires dataset names. 'XNAS.ITCH' is standard for US Equities (Nasdaq)
+        # Request the historical price dataset
         data = client.timeseries.get_range(
             dataset="XNAS.ITCH", 
-            schema="ohlcv-1d",       # Daily Open, High, Low, Close, Volume
+            schema="ohlcv-1d",
             symbols=[ticker],
             start=start_date,
             end=end_date,
             stype_in="raw_symbol"
         )
         
-        # Convert the raw Databento output into a clean Pandas DataFrame
+        # Convert to Pandas DataFrame (Databento now handles price conversion automatically)
         df = data.to_df()
-        
-        # Databento returns prices as integers (multiplied by 1e9). Convert back to standard decimals.
-        price_cols = ['open', 'high', 'low', 'close']
-        for col in price_cols:
-            if col in df.columns:
-                df[col] = df[col] / 1e9
-                
         return df
 
     except Exception as e:
@@ -48,18 +41,31 @@ def fetch_historical_price_data(ticker: str, event_date_str: str, days_before: i
         return pd.DataFrame()
 
 if __name__ == "__main__":
-    # Test case: Let's assume our BMS Markman ruling happened on 2023-08-15
-    test_ticker = "BMY"  # Bristol-Myers Squibb ticker
-    test_event_date = "2023-08-15"
+    # Target: The actual Amarin (AMRN) Patent Invalidation by Judge Miranda Du
+    test_ticker = "AMRN"
+    test_event_date = "2020-03-30"  # The correct date of the crash
     
-    # You need to export this in your terminal first: export DATABENTO_API_KEY="your_key"
     try:
-        price_df = fetch_historical_price_data(test_ticker, test_event_date)
+        # Execute the fetcher
+        price_df = fetch_historical_price_data(test_ticker, test_event_date, days_before=5, days_after=10)
+        
         if not price_df.empty:
             print(f"\n--- Databento Price Data for {test_ticker} ---")
-            # Print just the closing prices and volume
             print(price_df[['close', 'volume']])
+            
+            # Calculate the impact
+            max_price = price_df['close'].max()
+            min_price = price_df['close'].min()
+            crash_pct = ((min_price - max_price) / max_price) * 100
+            
+            print(f"\n--- Catalyst Impact ---")
+            print(f"Pre-Ruling High:  ${max_price:.2f}")
+            print(f"Post-Ruling Low:  ${min_price:.2f}")
+            print(f"Total Volatility: {crash_pct:.2f}%")
+            print("\nHackathon Note: This perfectly illustrates the directional trade opportunity.")
         else:
-            print("\nNo data returned. Check your API key and Databento account permissions.")
-    except ValueError as e:
-        print(e)
+            print("\nNo data returned. Check your Databento API key and permissions.")
+            
+    # Here is the missing exception block!
+    except Exception as e:
+        print(f"Execution Error: {e}")

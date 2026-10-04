@@ -17,13 +17,26 @@ class LegalAlphaSignal(BaseModel):
     key_legal_finding: str = Field(description="1-2 sentence distillation of the judicial construction or ruling")
 
 def analyze_legal_text(document_text: str, client: genai.Client) -> LegalAlphaSignal:
-    system_instruction = (
-        "You are an expert pharmaceutical patent litigator and quantitative trading analyst. "
-        "Analyze the provided Hatch-Waxman ANDA court document or judge assignment history. "
-        "Score the ruling strictly from the perspective of the branded patent owner (innovator). "
-        "A positive score (+0.1 to +1.0) means the patent is likely upheld or claims were narrowly construed in the innovator's favor. "
-        "A negative score (-0.1 to -1.0) means the patent is vulnerable to invalidation or generic entry is accelerated."
-    )
+    system_instruction = """
+    You are an expert quantitative regulatory and legal analyst for a biopharma hedge fund.
+    Your task is to read court dockets, judicial opinions, and SEC filings, and extract a directional alpha score based on catalyst outcomes.
+
+    BROADENED SCORING RULES:
+    - Score +0.5 to +1.0 (Bullish):
+        * The company WON a patent trial or secured an injunction against generics.
+        * Favorable litigation settlement or antitrust clearance.
+        * FDA drug approval, Fast Track designation, or positive Phase 3 clinical trial data.
+    - Score -0.5 to -1.0 (Bearish):
+        * The company LOST a patent trial, claims invalidated, or generic entry allowed.
+        * FDA Complete Response Letter (rejection), clinical hold, or failed clinical trial.
+        * Major product liability lawsuit filed, DOJ investigation, or adverse regulatory action.
+    - Score 0.0 (Neutral/Noise):
+        * Executive compensation, stock grants, board member changes.
+        * Routine earnings dates, debt offerings, or corporate presentations.
+        * Mergers & Acquisitions (score these neutral to avoid M&A premium/dilution noise).
+
+    Evaluate the text. If it contains a clear Bullish or Bearish regulatory/legal catalyst, assign a strong directional score. Otherwise, output 0.0.
+    """
 
     max_retries = 5
     base_wait_time = 4  # seconds
@@ -31,7 +44,7 @@ def analyze_legal_text(document_text: str, client: genai.Client) -> LegalAlphaSi
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model="gemini-3.8-flash",
+                model="gemini-3.5-flash-lite",   # <--- Updated model version
                 contents=document_text,
                 config=types.GenerateContentConfig(
                     system_instruction=system_instruction,
