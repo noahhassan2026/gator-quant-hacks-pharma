@@ -12,6 +12,10 @@ prices_live/
 minute_cache/
 models/
 backtest_report.png
+paper_state.json
+paper_state.json.tmp
+prices_paper/
+conf/
 labels_live_checked.txt
 __pycache__/
 __pycache__/
