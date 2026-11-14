@@ -21,6 +21,7 @@ from train_models import HEDGE_BORROW_RATE, add_item_features, add_text_features
 #         direction_model.joblib, exit_model.joblib, model_config.json (train_models.py)
 # Output: backtest_trades.csv, backtest_equity.csv, backtest_report.png and a printed report
 # Safe to stop and re-run; prices, scores and finished trades are cached.
+# To test a shorter window, give its first day:  python src/data/backtest.py 2026-05-14
 
 TEST_FILINGS_CSV = "filings_2025_2026.csv"
 HISTORY_CSV = "historical_sec_8k_2016_2024.csv"   # only for "days since the company's last filing"
@@ -460,6 +461,12 @@ def report(taken, curve, hedge):
 
 
 def main():
+    global TEST_START
+    if len(sys.argv) > 1:
+        try:
+            TEST_START = date.fromisoformat(sys.argv[1]).isoformat()
+        except ValueError:
+            sys.exit(f"Start date should look like 2026-05-14, not {sys.argv[1]!r}")
     for key in ("MASSIVE_API_KEY", "OSS_API_KEY"):
         if not os.environ.get(key):
             sys.exit(f"Set {key} in this terminal first.")
