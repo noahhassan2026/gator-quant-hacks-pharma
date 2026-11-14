@@ -12,7 +12,7 @@ import pandas as pd
 import build_labels as bl
 import oss_labeler as ol
 import train_models as tm
-from intraday_entry import ET
+from intraday_entry import ET, missing_data_key
 
 # Keeps the models learning from new filings. Run it on a schedule (weekly is plenty):
 #   python src/data/live_learning.py              (download new filings first)
@@ -193,8 +193,8 @@ def retrain():
 
 
 def main():
-    for key in ("MASSIVE_API_KEY", "OSS_API_KEY"):
-        if not os.environ.get(key):
+    for key in (missing_data_key(), "OSS_API_KEY"):
+        if key and not os.environ.get(key):
             sys.exit(f"Set {key} in this terminal first.")
     if "--no-download" not in sys.argv:
         if not os.environ.get("SEC_USER_AGENT"):

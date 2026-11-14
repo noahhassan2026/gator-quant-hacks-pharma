@@ -18,6 +18,7 @@ set -a; source .env; set +a
 | Variable | What it is |
 |---|---|
 | `MASSIVE_API_KEY` | Massive (Polygon) market data: daily and minute bars |
+| `MARKET_DATA`, `APCA_API_KEY_ID`, `APCA_API_SECRET_KEY` | Optional: set `MARKET_DATA=alpaca` to take bars from Alpaca instead of Massive (free plan works: SIP history, 200 requests/min) |
 | `OSS_API_KEY`, `OSS_BASE_URL`, `OSS_MODEL` | Any OpenAI-compatible endpoint serving gpt-oss-20b (we used UF NaviGator) |
 | `SEC_USER_AGENT` | Your name and email; SEC EDGAR requires it |
 | `WEBULL_APP_KEY`, `WEBULL_APP_SECRET` | Webull OpenAPI paper trading keys (only for paper trading) |

@@ -10,7 +10,7 @@ import pandas as pd
 
 import build_labels as bl
 import oss_labeler as ol
-from intraday_entry import ET, MARKET_CLOSE, MARKET_OPEN, fetch_minute_bars
+from intraday_entry import ET, MARKET_CLOSE, MARKET_OPEN, fetch_minute_bars, missing_data_key
 from train_models import HEDGE_BORROW_RATE, add_item_features, add_text_features, borrow_rate
 
 # Out-of-sample backtest of the trained models on filings from TEST_START to today,
@@ -205,7 +205,7 @@ def xph_minutes():
             bars.index = pd.to_datetime(bars.index, utc=True).tz_convert(ET)
         else:
             start = month.tz_localize(ET)
-            bars = fetch_minute_bars(bl.HEDGE, start, start + pd.offsets.MonthBegin(1), os.environ["MASSIVE_API_KEY"], adjusted=True)
+            bars = fetch_minute_bars(bl.HEDGE, start, start + pd.offsets.MonthBegin(1), adjusted=True)
             bars = regular_hours(bars)[["open", "close"]] if not bars.empty else pd.DataFrame(columns=["open", "close"])
             bars.to_csv(path)
         parts.append(bars)
@@ -238,7 +238,7 @@ def simulate(sig, rules, xph, calendar):
     accepted = pd.Timestamp(sig["AcceptedET"]).tz_convert(ET)
     tradable_at = accepted + timedelta(minutes=ENTRY_DELAY_MINUTES)
     bars = fetch_minute_bars(sig["Ticker"], tradable_at, tradable_at + timedelta(days=50),
-                             os.environ["MASSIVE_API_KEY"], adjusted=True)
+                             adjusted=True)
     if bars.empty:
         return None
     bars = regular_hours(bars[bars.index >= tradable_at])
@@ -490,8 +490,8 @@ def main():
             sys.exit(f"Start date should look like 2026-05-14, not {dates[0]!r}")
     if NO_STOPS:
         print("No stops or take-profits: every trade exits at its rule's time limit.\n")
-    for key in ("MASSIVE_API_KEY", "OSS_API_KEY"):
-        if not os.environ.get(key):
+    for key in (missing_data_key(), "OSS_API_KEY"):
+        if key and not os.environ.get(key):
             sys.exit(f"Set {key} in this terminal first.")
     if not os.path.exists(TEST_FILINGS_CSV):
         sys.exit(f"{TEST_FILINGS_CSV} not found. First run: python src/data/sec_edgar_8k.py 2025 2026 {TEST_FILINGS_CSV}")

@@ -24,7 +24,7 @@ import build_labels as bl  # noqa: E402
 import oss_labeler as ol  # noqa: E402
 import sec_edgar_8k as sec  # noqa: E402
 from backtest import MAX_GROSS_PCT, MAX_POSITIONS, MIN_POSITION_PCT, POSITION_PCT, ENTRY_DELAY_MINUTES  # noqa: E402
-from intraday_entry import ET, MARKET_CLOSE, MARKET_OPEN, fetch_minute_bars  # noqa: E402
+from intraday_entry import ET, MARKET_CLOSE, MARKET_OPEN, fetch_minute_bars, missing_data_key  # noqa: E402
 from train_models import add_item_features, add_text_features  # noqa: E402
 
 # Paper trades the strategy live on Webull's paper trading (sandbox) account, the same way
@@ -146,11 +146,11 @@ def tradable_time(accepted):
     return session(next_trading_day(t.date()))[0]
 
 
-# ---------- Prices (Massive, same source as the backtest) ----------
+# ---------- Prices (Massive or Alpaca, whichever MARKET_DATA picks, as in the backtest) ----------
 
 def last_price(ticker):
     now = pd.Timestamp.now(tz=ET)
-    bars = fetch_minute_bars(ticker, now - pd.Timedelta(days=5), now, os.environ["MASSIVE_API_KEY"], adjusted=True)
+    bars = fetch_minute_bars(ticker, now - pd.Timedelta(days=5), now, adjusted=True)
     if bars.empty:
         raise RuntimeError(f"no recent minute bars for {ticker}")
     return float(bars["close"].iloc[-1])
@@ -628,8 +628,8 @@ def exit_check_due(state, now):
 # ---------- Commands ----------
 
 def require_env(dry_run):
-    for key in ("MASSIVE_API_KEY", "OSS_API_KEY", "SEC_USER_AGENT"):
-        if not os.environ.get(key):
+    for key in (missing_data_key(), "OSS_API_KEY", "SEC_USER_AGENT"):
+        if key and not os.environ.get(key):
             sys.exit(f"Set {key} first (see .env.example).")
     if not dry_run and not (os.environ.get("WEBULL_APP_KEY") and os.environ.get("WEBULL_APP_SECRET")):
         sys.exit("Set WEBULL_APP_KEY and WEBULL_APP_SECRET first, or use --dry-run.")
