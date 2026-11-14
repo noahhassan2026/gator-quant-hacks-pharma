@@ -22,6 +22,7 @@ from train_models import HEDGE_BORROW_RATE, add_item_features, add_text_features
 # Output: backtest_trades.csv, backtest_equity.csv, backtest_report.png and a printed report
 # Safe to stop and re-run; prices, scores and finished trades are cached.
 # To test a shorter window, give its first day:  python src/data/backtest.py 2026-05-14
+# Add --no-stops to drop every take-profit and stop and exit only at each rule's time limit.
 
 TEST_FILINGS_CSV = "filings_2025_2026.csv"
 HISTORY_CSV = "historical_sec_8k_2016_2024.csv"   # only for "days since the company's last filing"
@@ -50,6 +51,7 @@ ENTRY_DELAY_MINUTES = 1        # time to read, score and send the order; matches
 STOP_CHECK = "close"           # "close": stop/target checked only at each day's close, the way the training
                                #          labels were built (live: a market-on-close order), did far better
                                # "minute": checked every minute, like an intraday stop order
+NO_STOPS = False               # True (or --no-stops): no take-profit or stop; every trade runs to its rule's time limit
 
 # Short borrow fees, charged the way Webull does: closing value x annual loan rate / 360 for every
 # calendar day the short is held overnight (same-day round trips pay none). Rates are estimated
@@ -249,6 +251,8 @@ def simulate(sig, rules, xph, calendar):
     tp, sl, max_days = rules[sig["rule"]]
     if tp == "vol":
         tp, sl = 2 * sig["vol_20"] * np.sqrt(max_days), sig["vol_20"] * np.sqrt(max_days)
+    if NO_STOPS:
+        tp = sl = None
 
     out = {}
     for mode in ("minute", "close"):
@@ -271,7 +275,7 @@ def simulate_all(signals, rules, xph, calendar, label):
         for line in open(SIM_CACHE):
             r = json.loads(line)
             cache[r["key"]] = r
-    key = lambda s: f"{s['Accession']}|{s['side']}|{s['rule']}|{ENTRY_DELAY_MINUTES}"
+    key = lambda s: f"{s['Accession']}|{s['side']}|{s['rule']}|{ENTRY_DELAY_MINUTES}" + ("|no_stops" if NO_STOPS else "")
     todo = [s for _, s in signals.iterrows() if key(s) not in cache]
     print(f"{label}: simulating {len(todo)} trades on minute bars ({len(signals) - len(todo)} cached)...", flush=True)
 
@@ -461,12 +465,17 @@ def report(taken, curve, hedge):
 
 
 def main():
-    global TEST_START
-    if len(sys.argv) > 1:
+    global TEST_START, NO_STOPS
+    args = sys.argv[1:]
+    NO_STOPS = NO_STOPS or "--no-stops" in args
+    dates = [a for a in args if not a.startswith("--")]
+    if dates:
         try:
-            TEST_START = date.fromisoformat(sys.argv[1]).isoformat()
+            TEST_START = date.fromisoformat(dates[0]).isoformat()
         except ValueError:
-            sys.exit(f"Start date should look like 2026-05-14, not {sys.argv[1]!r}")
+            sys.exit(f"Start date should look like 2026-05-14, not {dates[0]!r}")
+    if NO_STOPS:
+        print("No stops or take-profits: every trade exits at its rule's time limit.\n")
     for key in ("MASSIVE_API_KEY", "OSS_API_KEY"):
         if not os.environ.get(key):
             sys.exit(f"Set {key} in this terminal first.")
