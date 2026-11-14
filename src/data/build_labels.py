@@ -4,7 +4,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pandas as pd
-import requests
+
+from intraday_entry import massive_get
 
 # Step 2 of training: for every filing, what did the stock actually do next?
 # Input:  historical_sec_8k_2016_2024.csv (from sec_edgar_8k.py)
@@ -42,14 +43,7 @@ def daily_bars(ticker):
 
     url = f"https://api.massive.com/v2/aggs/ticker/{ticker}/range/1/day/{START}/{END}"
     params = {"adjusted": "true", "sort": "asc", "limit": 50000, "apiKey": os.environ["MASSIVE_API_KEY"]}
-    for _ in range(5):
-        res = requests.get(url, params=params, timeout=30)
-        if res.status_code == 429:
-            time.sleep(15)
-            continue
-        res.raise_for_status()
-        break
-    rows = res.json().get("results") or []
+    rows = massive_get(url, params).json().get("results") or []
     df = pd.DataFrame(rows)
     if not df.empty:
         df.index = pd.to_datetime(df["t"], unit="ms", utc=True).dt.tz_convert("America/New_York").dt.normalize().dt.tz_localize(None)

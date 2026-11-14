@@ -22,7 +22,8 @@ from train_models import HEDGE_BORROW_RATE, add_item_features, add_text_features
 # Output: backtest_trades.csv, backtest_equity.csv, backtest_report.png and a printed report
 # Safe to stop and re-run; prices, scores and finished trades are cached.
 # To test a shorter window, give its first day:  python src/data/backtest.py 2026-05-14
-# Add --no-stops to drop every take-profit and stop and exit only at each rule's time limit.
+# Add --no-stops to drop every take-profit and stop and exit only at each rule's time limit,
+# and --no-baseline to skip the short-everything comparison (about 5x fewer Massive requests).
 
 TEST_FILINGS_CSV = "filings_2025_2026.csv"
 HISTORY_CSV = "historical_sec_8k_2016_2024.csv"   # only for "days since the company's last filing"
@@ -114,9 +115,21 @@ def build_features():
     filings["days_since_last_filing"] = filings["Accession"].map(both.dropna(subset=["Accession"]).set_index("Accession")["gap"])
 
     bl.PRICE_DIR, bl.START, bl.END = PRICE_DIR, "2024-10-01", date.today().isoformat()
+    latest = filings.groupby("Ticker")["TS"].max().dt.tz_convert(ET).dt.date
+
+    def drop_stale(t, newest):
+        # Prices cached before the ticker's newest filing don't cover it: download them again
+        path = os.path.join(PRICE_DIR, f"{t}.csv")
+        if os.path.exists(path) and date.fromtimestamp(os.path.getmtime(path)) <= newest:
+            os.remove(path)
+
+    drop_stale(bl.HEDGE, latest.max())
     hedge = bl.daily_bars(bl.HEDGE)
     tickers = sorted(filings["Ticker"].unique())
-    print(f"Fetching daily prices for {len(tickers)} tickers...", flush=True)
+    for t in tickers:
+        drop_stale(t, latest[t])
+    todo = sum(not os.path.exists(os.path.join(PRICE_DIR, f"{t}.csv")) for t in tickers)
+    print(f"Fetching daily prices for {len(tickers)} tickers ({todo} to download)...", flush=True)
 
     def safe_bars(t):
         try:
@@ -465,9 +478,10 @@ def report(taken, curve, hedge):
 
 
 def main():
-    global TEST_START, NO_STOPS
+    global TEST_START, NO_STOPS, BASELINE
     args = sys.argv[1:]
     NO_STOPS = NO_STOPS or "--no-stops" in args
+    BASELINE = BASELINE and "--no-baseline" not in args
     dates = [a for a in args if not a.startswith("--")]
     if dates:
         try:
