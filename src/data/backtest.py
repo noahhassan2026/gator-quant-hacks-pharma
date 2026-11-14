@@ -10,7 +10,7 @@ import pandas as pd
 
 import build_labels as bl
 import oss_labeler as ol
-from intraday_entry import ET, MARKET_CLOSE, MARKET_OPEN, fetch_minute_bars
+from intraday_entry import ET, MARKET_CLOSE, MARKET_OPEN, fetch_minute_bars, missing_data_key
 from train_models import HEDGE_BORROW_RATE, add_item_features, add_text_features, borrow_rate
 
 # Out-of-sample backtest of the trained models on filings from TEST_START to today,
@@ -21,6 +21,9 @@ from train_models import HEDGE_BORROW_RATE, add_item_features, add_text_features
 #         direction_model.joblib, exit_model.joblib, model_config.json (train_models.py)
 # Output: backtest_trades.csv, backtest_equity.csv, backtest_report.png and a printed report
 # Safe to stop and re-run; prices, scores and finished trades are cached.
+# To test a shorter window, give its first day:  python src/data/backtest.py 2026-05-14
+# Add --no-stops to drop every take-profit and stop and exit only at each rule's time limit,
+# and --no-baseline to skip the short-everything comparison (about 5x fewer Massive requests).
 
 TEST_FILINGS_CSV = "filings_2025_2026.csv"
 HISTORY_CSV = "historical_sec_8k_2016_2024.csv"   # only for "days since the company's last filing"
@@ -49,6 +52,7 @@ ENTRY_DELAY_MINUTES = 1        # time to read, score and send the order; matches
 STOP_CHECK = "close"           # "close": stop/target checked only at each day's close, the way the training
                                #          labels were built (live: a market-on-close order), did far better
                                # "minute": checked every minute, like an intraday stop order
+NO_STOPS = False               # True (or --no-stops): no take-profit or stop; every trade runs to its rule's time limit
 
 # Short borrow fees, charged the way Webull does: closing value x annual loan rate / 360 for every
 # calendar day the short is held overnight (same-day round trips pay none). Rates are estimated
@@ -111,9 +115,21 @@ def build_features():
     filings["days_since_last_filing"] = filings["Accession"].map(both.dropna(subset=["Accession"]).set_index("Accession")["gap"])
 
     bl.PRICE_DIR, bl.START, bl.END = PRICE_DIR, "2024-10-01", date.today().isoformat()
+    latest = filings.groupby("Ticker")["TS"].max().dt.tz_convert(ET).dt.date
+
+    def drop_stale(t, newest):
+        # Prices cached before the ticker's newest filing don't cover it: download them again
+        path = os.path.join(PRICE_DIR, f"{t}.csv")
+        if os.path.exists(path) and date.fromtimestamp(os.path.getmtime(path)) <= newest:
+            os.remove(path)
+
+    drop_stale(bl.HEDGE, latest.max())
     hedge = bl.daily_bars(bl.HEDGE)
     tickers = sorted(filings["Ticker"].unique())
-    print(f"Fetching daily prices for {len(tickers)} tickers...", flush=True)
+    for t in tickers:
+        drop_stale(t, latest[t])
+    todo = sum(not os.path.exists(os.path.join(PRICE_DIR, f"{t}.csv")) for t in tickers)
+    print(f"Fetching daily prices for {len(tickers)} tickers ({todo} to download)...", flush=True)
 
     def safe_bars(t):
         try:
@@ -189,7 +205,7 @@ def xph_minutes():
             bars.index = pd.to_datetime(bars.index, utc=True).tz_convert(ET)
         else:
             start = month.tz_localize(ET)
-            bars = fetch_minute_bars(bl.HEDGE, start, start + pd.offsets.MonthBegin(1), os.environ["MASSIVE_API_KEY"], adjusted=True)
+            bars = fetch_minute_bars(bl.HEDGE, start, start + pd.offsets.MonthBegin(1), adjusted=True)
             bars = regular_hours(bars)[["open", "close"]] if not bars.empty else pd.DataFrame(columns=["open", "close"])
             bars.to_csv(path)
         parts.append(bars)
@@ -222,7 +238,7 @@ def simulate(sig, rules, xph, calendar):
     accepted = pd.Timestamp(sig["AcceptedET"]).tz_convert(ET)
     tradable_at = accepted + timedelta(minutes=ENTRY_DELAY_MINUTES)
     bars = fetch_minute_bars(sig["Ticker"], tradable_at, tradable_at + timedelta(days=50),
-                             os.environ["MASSIVE_API_KEY"], adjusted=True)
+                             adjusted=True)
     if bars.empty:
         return None
     bars = regular_hours(bars[bars.index >= tradable_at])
@@ -248,6 +264,8 @@ def simulate(sig, rules, xph, calendar):
     tp, sl, max_days = rules[sig["rule"]]
     if tp == "vol":
         tp, sl = 2 * sig["vol_20"] * np.sqrt(max_days), sig["vol_20"] * np.sqrt(max_days)
+    if NO_STOPS:
+        tp = sl = None
 
     out = {}
     for mode in ("minute", "close"):
@@ -270,7 +288,7 @@ def simulate_all(signals, rules, xph, calendar, label):
         for line in open(SIM_CACHE):
             r = json.loads(line)
             cache[r["key"]] = r
-    key = lambda s: f"{s['Accession']}|{s['side']}|{s['rule']}|{ENTRY_DELAY_MINUTES}"
+    key = lambda s: f"{s['Accession']}|{s['side']}|{s['rule']}|{ENTRY_DELAY_MINUTES}" + ("|no_stops" if NO_STOPS else "")
     todo = [s for _, s in signals.iterrows() if key(s) not in cache]
     print(f"{label}: simulating {len(todo)} trades on minute bars ({len(signals) - len(todo)} cached)...", flush=True)
 
@@ -460,8 +478,20 @@ def report(taken, curve, hedge):
 
 
 def main():
-    for key in ("MASSIVE_API_KEY", "OSS_API_KEY"):
-        if not os.environ.get(key):
+    global TEST_START, NO_STOPS, BASELINE
+    args = sys.argv[1:]
+    NO_STOPS = NO_STOPS or "--no-stops" in args
+    BASELINE = BASELINE and "--no-baseline" not in args
+    dates = [a for a in args if not a.startswith("--")]
+    if dates:
+        try:
+            TEST_START = date.fromisoformat(dates[0]).isoformat()
+        except ValueError:
+            sys.exit(f"Start date should look like 2026-05-14, not {dates[0]!r}")
+    if NO_STOPS:
+        print("No stops or take-profits: every trade exits at its rule's time limit.\n")
+    for key in (missing_data_key(), "OSS_API_KEY"):
+        if key and not os.environ.get(key):
             sys.exit(f"Set {key} in this terminal first.")
     if not os.path.exists(TEST_FILINGS_CSV):
         sys.exit(f"{TEST_FILINGS_CSV} not found. First run: python src/data/sec_edgar_8k.py 2025 2026 {TEST_FILINGS_CSV}")

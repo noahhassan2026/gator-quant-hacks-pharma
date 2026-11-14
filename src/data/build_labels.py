@@ -4,7 +4,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pandas as pd
-import requests
+
+from intraday_entry import fetch_daily_bars
 
 # Step 2 of training: for every filing, what did the stock actually do next?
 # Input:  historical_sec_8k_2016_2024.csv (from sec_edgar_8k.py)
@@ -34,22 +35,13 @@ EXIT_RULES = {
 
 
 def daily_bars(ticker):
-    """Split-adjusted daily bars from Massive, cached to disk."""
+    """Split-adjusted daily bars from Massive or Alpaca (MARKET_DATA), cached to disk."""
     os.makedirs(PRICE_DIR, exist_ok=True)
     path = os.path.join(PRICE_DIR, f"{ticker}.csv")
     if os.path.exists(path):
         return pd.read_csv(path, index_col=0, parse_dates=True)
 
-    url = f"https://api.massive.com/v2/aggs/ticker/{ticker}/range/1/day/{START}/{END}"
-    params = {"adjusted": "true", "sort": "asc", "limit": 50000, "apiKey": os.environ["MASSIVE_API_KEY"]}
-    for _ in range(5):
-        res = requests.get(url, params=params, timeout=30)
-        if res.status_code == 429:
-            time.sleep(15)
-            continue
-        res.raise_for_status()
-        break
-    rows = res.json().get("results") or []
+    rows = fetch_daily_bars(ticker, START, END)
     df = pd.DataFrame(rows)
     if not df.empty:
         df.index = pd.to_datetime(df["t"], unit="ms", utc=True).dt.tz_convert("America/New_York").dt.normalize().dt.tz_localize(None)

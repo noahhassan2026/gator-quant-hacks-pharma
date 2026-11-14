@@ -9,6 +9,8 @@ from pathlib import Path
 # Run from the repo root:  python src/data/run_training.py
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+from intraday_entry import missing_data_key  # noqa: E402
 
 
 def run(script):
@@ -16,7 +18,7 @@ def run(script):
 
 
 # Catch setup problems before anything runs
-missing = [k for k in ("MASSIVE_API_KEY", "OSS_API_KEY") if not os.environ.get(k)]
+missing = [k for k in (missing_data_key(), "OSS_API_KEY") if k and not os.environ.get(k)]
 if missing:
     sys.exit(f"Set {' and '.join(missing)} in this terminal first (see the run steps).")
 needed = ["build_labels.py", "intraday_entry.py", "oss_labeler.py", "train_models.py"]
